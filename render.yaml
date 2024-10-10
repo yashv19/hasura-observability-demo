@@ -3,134 +3,100 @@ services:
   - name: prometheus
     type: web
     env: docker
-    docker:
-      image: ${PROM_IMAGE}
-      command: [
-        "--config.file=/etc/prometheus/prometheus.yml",
-        "--storage.tsdb.path=/prometheus",
-        "--web.console.libraries=/usr/share/prometheus/console_libraries",
-        "--web.console.templates=/usr/share/prometheus/consoles",
-        "--web.enable-lifecycle"
-      ]
-    mounts:
-      - type: volume
-        source: prometheus_data
-        target: /prometheus
-      - type: path
-        source: ./prometheus
-        target: /etc/prometheus
-    ports:
-      - ${PROM_PORT}:9090
-    restartPolicy: always
+    plan: standard
+    image: ${PROM_IMAGE}
+    startCommand: >
+      --config.file=/etc/prometheus/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --web.console.libraries=/usr/share/prometheus/console_libraries
+      --web.console.templates=/usr/share/prometheus/consoles
+      --web.enable-lifecycle
+    disk:
+      - name: prometheus_data
+        mountPath: /prometheus
+    envVars:
+      - key: PROM_PORT
+        value: ${PROM_PORT}
 
   - name: node-exporter
     type: web
     env: docker
-    docker:
-      image: ${NODE_EXPORTER_IMAGE}
-      command: [
-        "--path.procfs=/host/proc",
-        "--path.sysfs=/host/sys",
-        "--collector.filesystem.ignored-mount-points",
-        "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
-      ]
-    mounts:
-      - type: path
-        source: /proc
-        target: /host/proc
-        readOnly: true
-      - type: path
-        source: /sys
-        target: /host/sys
-        readOnly: true
-      - type: path
-        source: /
-        target: /rootfs
-        readOnly: true
-    ports:
-      - ${NODE_EXPORTER_PORT}:9100
-    restartPolicy: always
+    plan: standard
+    image: ${NODE_EXPORTER_IMAGE}
+    startCommand: >
+      --path.procfs=/host/proc
+      --path.sysfs=/host/sys
+      --collector.filesystem.ignored-mount-points
+      "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    envVars:
+      - key: NODE_EXPORTER_PORT
+        value: ${NODE_EXPORTER_PORT}
 
   - name: alertmanager
     type: web
     env: docker
-    docker:
-      image: ${ALERT_MANAGER_IMAGE}
-    mounts:
-      - type: path
-        source: ./alertmanager/config.yml
-        target: /etc/alertmanager/alertmanager.yml
-    ports:
-      - ${ALERT_MANAGER_PORT}:9093
-    restartPolicy: always
+    plan: standard
+    image: ${ALERT_MANAGER_IMAGE}
+    startCommand: alertmanager
+    disk:
+      - name: alertmanager_data
+        mountPath: /etc/alertmanager
+    envVars:
+      - key: ALERT_MANAGER_PORT
+        value: ${ALERT_MANAGER_PORT}
 
   - name: blackbox-exporter
     type: web
     env: docker
-    docker:
-      image: ${BLACKBOX_IMAGE}
-      command: ["--config.file=/etc/blackboxexporter/config.yml"]
-    mounts:
-      - type: path
-        source: ./blackboxexporter
-        target: /etc/blackboxexporter
-    ports:
-      - ${BLACKBOX_PORT}:9115
-    restartPolicy: always
+    plan: standard
+    image: ${BLACKBOX_IMAGE}
+    startCommand: >
+      --config.file=/etc/blackboxexporter/config.yml
+    disk:
+      - name: blackbox_data
+        mountPath: /etc/blackboxexporter
+    envVars:
+      - key: BLACKBOX_PORT
+        value: ${BLACKBOX_PORT}
 
   - name: grafana
     type: web
     env: docker
-    docker:
-      image: ${GRAFANA_IMAGE}
-    mounts:
-      - type: volume
-        source: grafana_data
-        target: /var/lib/grafana
-      - type: path
-        source: ./grafana/dashboards
-        target: /var/lib/grafana/dashboards
-      - type: path
-        source: ./grafana/provisioning
-        target: /etc/grafana/provisioning
-    ports:
-      - ${GRAFANA_PORT}:3000
-    restartPolicy: always
+    plan: standard
+    image: ${GRAFANA_IMAGE}
+    startCommand: grafana-server
+    disk:
+      - name: grafana_data
+        mountPath: /var/lib/grafana
     envVars:
+      - key: GRAFANA_PORT
+        value: ${GRAFANA_PORT}
       - key: GF_SECURITY_ADMIN_PASSWORD
         value: ${GRAFANA_ADMIN_PASSWORD}
 
   - name: loki
     type: web
     env: docker
-    docker:
-      image: ${LOKI_IMAGE}
-      command: -config.file=/etc/loki/local-config.yaml
-    mounts:
-      - type: path
-        source: ./loki/local-config.yaml
-        target: /etc/loki/local-config.yaml
-    ports:
-      - ${LOKI_PORT}:3100
+    plan: standard
+    image: ${LOKI_IMAGE}
+    startCommand: -config.file=/etc/loki/local-config.yaml
+    disk:
+      - name: loki_data
+        mountPath: /etc/loki
+    envVars:
+      - key: LOKI_PORT
+        value: ${LOKI_PORT}
 
   - name: otel-collector
     type: web
     env: docker
-    docker:
-      image: ${OTEL_COLLECTOR_IMAGE}
-      command: ["--config=/etc/otel-collector-config.yaml"]
-    mounts:
-      - type: path
-        source: ./otel-collector/otel-collector-config.yaml
-        target: /etc/otel-collector-config.yaml
-    ports:
-      - 1888
-      - 8888
-      - 8889
-      - 13133
-      - 4317:4317
-      - 4318:4318
-      - 55679
+    plan: standard
+    image: ${OTEL_COLLECTOR_IMAGE}
+    startCommand: >
+      --config=/etc/otel-collector-config.yaml
+    disk:
+      - name: otel_collector_data
+        mountPath: /etc/otel-collector
     envVars:
       - key: DD_API_KEY
         value: ${DD_API_KEY}
@@ -144,4 +110,6 @@ services:
   - name: auth-hook
     type: web
     env: docker
+    plan: standard
     buildCommand: docker build ./examples/auth-hook
+    startCommand: ./examples/auth-hook/start.sh
