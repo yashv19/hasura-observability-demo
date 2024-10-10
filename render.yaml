@@ -1,0 +1,147 @@
+# For deployment on Render since it does not support docker-compose
+services:
+  - name: prometheus
+    type: web
+    env: docker
+    docker:
+      image: ${PROM_IMAGE}
+      command: [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus",
+        "--web.console.libraries=/usr/share/prometheus/console_libraries",
+        "--web.console.templates=/usr/share/prometheus/consoles",
+        "--web.enable-lifecycle"
+      ]
+    mounts:
+      - type: volume
+        source: prometheus_data
+        target: /prometheus
+      - type: path
+        source: ./prometheus
+        target: /etc/prometheus
+    ports:
+      - ${PROM_PORT}:9090
+    restartPolicy: always
+
+  - name: node-exporter
+    type: web
+    env: docker
+    docker:
+      image: ${NODE_EXPORTER_IMAGE}
+      command: [
+        "--path.procfs=/host/proc",
+        "--path.sysfs=/host/sys",
+        "--collector.filesystem.ignored-mount-points",
+        "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+      ]
+    mounts:
+      - type: path
+        source: /proc
+        target: /host/proc
+        readOnly: true
+      - type: path
+        source: /sys
+        target: /host/sys
+        readOnly: true
+      - type: path
+        source: /
+        target: /rootfs
+        readOnly: true
+    ports:
+      - ${NODE_EXPORTER_PORT}:9100
+    restartPolicy: always
+
+  - name: alertmanager
+    type: web
+    env: docker
+    docker:
+      image: ${ALERT_MANAGER_IMAGE}
+    mounts:
+      - type: path
+        source: ./alertmanager/config.yml
+        target: /etc/alertmanager/alertmanager.yml
+    ports:
+      - ${ALERT_MANAGER_PORT}:9093
+    restartPolicy: always
+
+  - name: blackbox-exporter
+    type: web
+    env: docker
+    docker:
+      image: ${BLACKBOX_IMAGE}
+      command: ["--config.file=/etc/blackboxexporter/config.yml"]
+    mounts:
+      - type: path
+        source: ./blackboxexporter
+        target: /etc/blackboxexporter
+    ports:
+      - ${BLACKBOX_PORT}:9115
+    restartPolicy: always
+
+  - name: grafana
+    type: web
+    env: docker
+    docker:
+      image: ${GRAFANA_IMAGE}
+    mounts:
+      - type: volume
+        source: grafana_data
+        target: /var/lib/grafana
+      - type: path
+        source: ./grafana/dashboards
+        target: /var/lib/grafana/dashboards
+      - type: path
+        source: ./grafana/provisioning
+        target: /etc/grafana/provisioning
+    ports:
+      - ${GRAFANA_PORT}:3000
+    restartPolicy: always
+    envVars:
+      - key: GF_SECURITY_ADMIN_PASSWORD
+        value: ${GRAFANA_ADMIN_PASSWORD}
+
+  - name: loki
+    type: web
+    env: docker
+    docker:
+      image: ${LOKI_IMAGE}
+      command: -config.file=/etc/loki/local-config.yaml
+    mounts:
+      - type: path
+        source: ./loki/local-config.yaml
+        target: /etc/loki/local-config.yaml
+    ports:
+      - ${LOKI_PORT}:3100
+
+  - name: otel-collector
+    type: web
+    env: docker
+    docker:
+      image: ${OTEL_COLLECTOR_IMAGE}
+      command: ["--config=/etc/otel-collector-config.yaml"]
+    mounts:
+      - type: path
+        source: ./otel-collector/otel-collector-config.yaml
+        target: /etc/otel-collector-config.yaml
+    ports:
+      - 1888
+      - 8888
+      - 8889
+      - 13133
+      - 4317:4317
+      - 4318:4318
+      - 55679
+    envVars:
+      - key: DD_API_KEY
+        value: ${DD_API_KEY}
+      - key: NEW_RELIC_API_KEY
+        value: ${NEW_RELIC_API_KEY}
+      - key: HONEYCOMB_API_KEY
+        value: ${HONEYCOMB_API_KEY}
+      - key: HONEYCOMB_DATASET
+        value: ${HONEYCOMB_DATASET}
+
+  - name: auth-hook
+    type: web
+    env: docker
+    buildCommand: docker build ./examples/auth-hook
